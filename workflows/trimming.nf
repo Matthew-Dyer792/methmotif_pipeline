@@ -57,7 +57,7 @@ process TRIMMOMATIC {
     conda (params.enable_conda ? "bioconda::trimmomatic=0.39" : null)
     container "${ workflow.containerEngine == 'singularity' ? 'quay.io/biocontainers/trimmomatic:0.39--hdfd78af_2' : null}"
 
-    publishDir "${params.outdir}/trimmed_fastq", mode: 'copy'
+    // publishDir "${params.outdir}/trimmed_fastq", mode: 'copy'
 
     input:
     tuple val(meta), path(reads)
@@ -105,7 +105,7 @@ process FASTQC {
     conda (params.enable_conda ? "bioconda::fastqc=0.11.9" : null)
     container "${ workflow.containerEngine == 'singularity' ? 'quay.io/biocontainers/fastqc:0.11.9--hdfd78af_1' : null}"
 
-    publishDir "${params.outdir}/pre-align_fastqc", mode: 'copy'
+    // publishDir "${params.outdir}/pre-align_fastqc", mode: 'copy'
 
     input:
     tuple val(meta), path(reads)
@@ -138,7 +138,7 @@ process MULTIQC {
     conda (params.enable_conda ? 'bioconda::multiqc=1.13' : null)
     container "${ workflow.containerEngine == 'singularity' ? 'quay.io/biocontainers/multiqc:1.13--pyhdfd78af_0' : null}"
 
-    publishDir "${params.outdir}/pre-align_multiqc", mode: 'copy'
+    // publishDir "${params.outdir}/pre-align_multiqc", mode: 'copy'
 
     input:
     path multiqc_files
