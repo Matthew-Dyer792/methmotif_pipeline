@@ -1,25 +1,26 @@
-#!/usr/bin/env nextflow
 /*
 ========================================================================================
-    methmotif pre-align
+    VALIDATE INPUTS
 ========================================================================================
-    take in or downnload fastq files and provide out a multiqc report on the data
-----------------------------------------------------------------------------------------
 */
 
+// def valid_params = [
+//     ena_metadata_fields : ['run_accession', 'experiment_accession', 'library_layout', 'fastq_ftp', 'fastq_md5']
+// ]
 
-//needs rework
+// def summary_params = NfcoreSchema.paramsSummaryMap(workflow, params)
 
-
-
-
-nextflow.enable.dsl = 2
+// // Validate input parameters
+// WorkflowSra.initialise(params, log, valid_params)
 
 /*
 ========================================================================================
-    VALIDATE
+    IMPORT LOCAL MODULES/SUBWORKFLOWS
 ========================================================================================
 */
+
+include { FASTQC    } from '../modules/fastqc'
+include { MULTIQC   } from '../modules/multiqc'
 
 /*
 ========================================================================================
@@ -41,76 +42,7 @@ Channel
 
 /*
 ========================================================================================
-    PIPELINE STEPS
-========================================================================================
-*/
-
-// possible fetch-ngs step
-
-process FASTQC { 
-    tag "$meta.id"
-    label 'process_medium'
-
-    conda (params.enable_conda ? "bioconda::fastqc=0.11.9" : null)
-    container "${ workflow.containerEngine == 'singularity' ? 'quay.io/biocontainers/fastqc:0.11.9--hdfd78af_1' : null}"
-
-    // publishDir "${params.outdir}/pre-align_fastqc", mode: 'copy'
-
-    input:
-    tuple val(meta), path(reads)
-
-    output:
-    tuple val(meta), path("*.html"), emit: html
-    tuple val(meta), path("*.zip") , emit: zip
-
-    when:
-    task.ext.when == null || task.ext.when
-
-    script:
-    def args = task.ext.args ?: ''
-    def prefix = task.ext.prefix ?: ''
-    if (meta.single_end) {
-        """
-        fastqc $args --threads $task.cpus ${reads}
-        """
-    } else {
-        """
-        fastqc $args --threads $task.cpus ${reads[0]} ${reads[1]}
-        """
-    }
-}
-
-process MULTIQC { 
-    tag "pre-aligned_multiqc"
-    label 'process_medium'
-
-    conda (params.enable_conda ? 'bioconda::multiqc=1.13' : null)
-    container "${ workflow.containerEngine == 'singularity' ? 'quay.io/biocontainers/multiqc:1.13--pyhdfd78af_0' : null}"
-
-    // publishDir "${params.outdir}/pre-align_multiqc", mode: 'copy'
-
-    input:
-    path multiqc_files
-
-    output:
-    path "*multiqc_report.html", emit: report
-    path "*_data"              , emit: data
-    path "*_plots"             , optional:true, emit: plots
-
-    when:
-    task.ext.when == null || task.ext.when
-
-    script:
-    def args = task.ext.args ?: ''
-    def prefix = task.ext.prefix ?: ''
-    """
-    multiqc -f $args .
-    """
-}
-
-/*
-========================================================================================
-    RUN ALL WORKFLOWS
+    RUN MAIN WORKFLOW
 ========================================================================================
 */
 
