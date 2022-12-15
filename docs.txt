@@ -1,0 +1,20 @@
+installing nextflow 
+check website
+or use conda
+conda create -n nextflow -c bioconda nextflow=22.10
+
+conda activate nextflow
+
+or use singularity as it is safer and more deployable
+
+module load application/go/1.14.2
+module load application/singularity/3.5.3 
+
+
+
+
+fetchngs-1.8
+first add chia.config to conf folder
+add chia.config file to profile section in nextflow.config in main dir
+makesure to use the nextflow release of 21.10.6 to ensure proper behaviour
+
