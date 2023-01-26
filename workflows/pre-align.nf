@@ -19,8 +19,8 @@
 ========================================================================================
 */
 
-include { FASTQC    } from '../modules/fastqc'
-include { MULTIQC   } from '../modules/multiqc'
+include { FASTQC    } from '../modules/fastqc/main'
+include { MULTIQC   } from '../modules/multiqc/main'
 
 /*
 ========================================================================================
