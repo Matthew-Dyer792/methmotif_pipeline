@@ -19,9 +19,44 @@
 ========================================================================================
 */
 
-include { STAR_ALIGN      } from '../modules/star/align'
-include { BISMARK_ALIGN      } from '../modules/bismark/align'
-// maybe add the samtools subworkflow
+include { FASTQC as PRE_FASTQ_CHIP  } from '../modules/fastqc/main'
+include { FASTQC as PRE_FASTQ_BS    } from '../modules/fastqc/main'
+include { FASTQC as POST_FASTQ_CHIP } from '../modules/fastqc/main'
+include { FASTQC as POST_FASTQ_BS   } from '../modules/fastqc/main'
+include { FASTP as FASTP_CHIP       } from '../modules/fastp/main'
+include { STAR_ALIGN                } from '../modules/star/align/main'
+include { MULTIQC as MULTIQC_CHIP   } from '../modules/multiqc/main'
+include { MULTIQC as MULTIQC_BS     } from '../modules/multiqc/main'
+
+/*
+========================================================================================
+    BUILD WORKFLOW CHANNELS
+========================================================================================
+*/
+
+// Create a channel for input read files
+Channel
+    .fromPath(params.chip_input, type: 'file', checkIfExists: true)
+    .ifEmpty { exit 1, "Cannot find any .csv file matching: ${params.input}\n" }
+    .splitCsv(header: true)
+    .map { row -> if (row.fastq_2) {
+            tuple([id: "${row.sample}", single_end: false, trim: "${row.trim}".toBoolean()], [file("${row.fastq_1}"), file("${row.fastq_2}")]) 
+        } else {
+            tuple([id: "${row.sample}", single_end: true, trim: "${row.trim}".toBoolean()], file("${row.fastq_1}")) 
+        } }
+    .set { chip_reads }
+
+// Create a channel for input read files
+Channel
+    .fromPath(params.bs_input, type: 'file', checkIfExists: true)
+    .ifEmpty { exit 1, "Cannot find any .csv file matching: ${params.input}\n" }
+    .splitCsv(header: true)
+    .map { row -> if (row.fastq_2) {
+            tuple([id: "${row.sample}", single_end: false, trim: "${row.trim}".toBoolean()], [file("${row.fastq_1}"), file("${row.fastq_2}")]) 
+        } else {
+            tuple([id: "${row.sample}", single_end: true, trim: "${row.trim}".toBoolean()], file("${row.fastq_1}")) 
+        } }
+    .set { bs_reads }
 
 /*
 ========================================================================================
@@ -29,139 +64,43 @@ include { BISMARK_ALIGN      } from '../modules/bismark/align'
 ========================================================================================
 */
 
+//
+// WORKFLOW: Run the pre-align steps
+//
 workflow ALIGN {
+    // PRE_FASTQ_CHIP (chip_reads)
+    
+    chip_reads
+        .filter { it.first().trim }
+        // .set{ chip_trim }
+        .view()
 
-    take:
-    reads // channel: val( meta ), path([ fastq ])
-    index // channel: path( index_dir )
+    // FASTP_CHIP (chip_trim)
 
-    main:
+    // POST_FASTQ_CHIP (FASTP_CHIP.out.reads)
 
+    // filter out for multiqc... actually no
 
+    chip_reads
+        .filter { !it.first().trim }
+        // .set{ chip_trim }
+        .view()
 
+    // STAR_ALIGN ()
 
-    take:
-    ids // channel: [ ids ]
+    // MULTIQC_CHIP ()
 
-    main:
-    ch_versions = Channel.empty()
+    // PRE_FASTQ_BS (bs_reads)
 
-    //
-    // Fail the pipeline if GEO ids detected
-    //
-    ids
-        .collect()
-        .map { WorkflowSra.isGeoFail(it, log) }
+    // FASTQC.out.zip
+    //     .map{ it[1] }
+    //     .collect()
+    //     .set{ fastqc_zip }
 
-    //
-    // MODULE: Get SRA run information for public database ids
-    //
-    SRA_IDS_TO_RUNINFO (
-        ids,
-        params.ena_metadata_fields ?: ''
-    )
-    ch_versions = ch_versions.mix(SRA_IDS_TO_RUNINFO.out.versions.first())
+    // fastqc_zip
+    //     .set{ multiqc_files }
 
-    //
-    // MODULE: Parse SRA run information, create file containing FTP links and read into workflow as [ meta, [reads] ]
-    //
-    SRA_RUNINFO_TO_FTP (
-        SRA_IDS_TO_RUNINFO.out.tsv
-    )
-    ch_versions = ch_versions.mix(SRA_RUNINFO_TO_FTP.out.versions.first())
-
-    SRA_RUNINFO_TO_FTP
-        .out
-        .tsv
-        .splitCsv(header:true, sep:'\t')
-        .map {
-            meta ->
-                def meta_clone = meta.clone()
-                meta_clone.single_end = meta_clone.single_end.toBoolean()
-                return meta_clone
-        }
-        .unique()
-        .set { ch_sra_metadata }
-    ch_versions = ch_versions.mix(SRA_RUNINFO_TO_FTP.out.versions.first())
-
-    if (!params.skip_fastq_download) {
-
-        ch_sra_metadata
-            .map { 
-                meta -> 
-                    [ meta, [ meta.fastq_1, meta.fastq_2 ] ] 
-            }
-            .branch {
-                ftp: it[0].fastq_1  && !params.force_sratools_download
-                sra: !it[0].fastq_1 || params.force_sratools_download
-            }
-            .set { ch_sra_reads }
-
-        //
-        // MODULE: If FTP link is provided in run information then download FastQ directly via FTP and validate with md5sums
-        //
-        SRA_FASTQ_FTP (
-            ch_sra_reads.ftp
-        )
-        ch_versions = ch_versions.mix(SRA_FASTQ_FTP.out.versions.first())
-
-        //
-        // SUBWORKFLOW: Download sequencing reads without FTP links using sra-tools.
-        //
-        FASTQ_DOWNLOAD_PREFETCH_FASTERQDUMP_SRATOOLS (
-            ch_sra_reads.sra.map { meta, reads -> [ meta, meta.run_accession ] }
-        )
-        ch_versions = ch_versions.mix(FASTQ_DOWNLOAD_PREFETCH_FASTERQDUMP_SRATOOLS.out.versions.first())
-
-        SRA_FASTQ_FTP
-            .out
-            .fastq
-            .mix(FASTQ_DOWNLOAD_PREFETCH_FASTERQDUMP_SRATOOLS.out.reads)
-            .map { 
-                meta, fastq ->
-                    def reads = meta.single_end ? [ fastq ] : fastq
-                    def meta_clone = meta.clone()
-                    meta_clone.fastq_1 = reads[0] ? "${params.outdir}/fastq/${reads[0].getName()}" : ''
-                    meta_clone.fastq_2 = reads[1] && !meta.single_end ? "${params.outdir}/fastq/${reads[1].getName()}" : ''
-                    return meta_clone
-            }
-            .set { ch_sra_metadata }
-    }
-
-    //
-    // MODULE: Stage FastQ files downloaded by SRA together and auto-create a samplesheet
-    //
-    SRA_TO_SAMPLESHEET (
-        ch_sra_metadata,
-        params.nf_core_pipeline ?: '',
-        params.sample_mapping_fields
-    )
-
-    //
-    // MODULE: Create a merged samplesheet across all samples for the pipeline
-    //
-    SRA_MERGE_SAMPLESHEET (
-        SRA_TO_SAMPLESHEET.out.samplesheet.collect{it[1]},
-        SRA_TO_SAMPLESHEET.out.mappings.collect{it[1]}
-    )
-    ch_versions = ch_versions.mix(SRA_MERGE_SAMPLESHEET.out.versions)
-
-    //
-    // MODULE: Create a MutiQC config file with sample name mappings
-    //
-    if (params.sample_mapping_fields) {
-        MULTIQC_MAPPINGS_CONFIG (
-            SRA_MERGE_SAMPLESHEET.out.mappings
-        )
-        ch_versions = ch_versions.mix(MULTIQC_MAPPINGS_CONFIG.out.versions)
-    }
-
-    //
-    // MODULE: Dump software versions for all tools used in the workflow
-    //
-    CUSTOM_DUMPSOFTWAREVERSIONS (
-        ch_versions.unique().collectFile(name: 'collated_versions.yml')
-    )
+    // MULTIQC (multiqc_files)
 }
 
 /*

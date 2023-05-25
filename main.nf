@@ -63,6 +63,8 @@ if (params.workflow == 'pre-align') {
     include { TRIMMING } from './workflows/align'
 }
 
+include { ALIGN } from './workflows/align'
+
 //
 // WORKFLOW: Run main methmotif pipeline depending on the step provided
 //
@@ -79,13 +81,8 @@ workflow     METHMOTIF_PIPELINE {
     //
     } else if (params.workflow == 'trimming') {
         TRIMMING (  )
-
-    //
-    // WORKFLOW: trim the fastq files if necessary
-    //
-    } else if (params.workflow == 'align') {
-        ALIGN (  )
     }
+    ALIGN (  )
 }
 
 /*
